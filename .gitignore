@@ -40,3 +40,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Google サービスアカウントの鍵（秘密情報。絶対にコミットしない）
+unique-antonym-*.json
+*service-account*.json
