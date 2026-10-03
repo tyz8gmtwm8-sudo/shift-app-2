@@ -1,119 +1,173 @@
 # 介護施設向け 自動シフト作成アプリ
 
-従業員がスマホから希望休を提出し、管理者がボタンひとつでシフトを自動生成できる Web アプリです。
-要件は [requirements.md](requirements.md) を参照してください。
+従業員はスマホから希望休を提出し、管理者はボタンひとつで条件を満たすシフト案を作れる Web アプリです。
+人員が足りない日は赤く表示されます。手で調整したシフトは、Google スプレッドシートに自動で保存されます。
 
-- 技術: Next.js 16 / Supabase（ログイン・データベース）/ Vercel（公開）/ Google Sheets API（保存）
-- 主な画面
-  - 従業員: `/login` → `/employee`（希望休カレンダー）
-  - 管理者: `/admin/login` → `/admin`（自動作成・シフト表・従業員設定・表示名設定）
-
-## フォルダ構成
-
-```
-supabase/schema.sql        … データベースの定義（テーブル・アクセス制限）
-supabase/create-admin.sql  … 最初の管理者を登録する SQL
-src/lib/generate.ts        … シフト自動生成ロジック
-src/lib/sheets.ts          … Google スプレッドシートへの保存
-src/app/admin/actions.ts   … 管理者の保存・削除・生成などのサーバー処理
-src/app/employee/          … 従業員の希望休画面
-src/app/admin/(main)/      … 管理者の各画面
-src/components/            … 画面の部品
-```
+![Next.js](https://img.shields.io/badge/Next.js_16-000000?logo=nextdotjs&logoColor=white)
+![React](https://img.shields.io/badge/React_19-61DAFB?logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS_4-06B6D4?logo=tailwindcss&logoColor=white)
+![Supabase](https://img.shields.io/badge/Supabase-3FCF8E?logo=supabase&logoColor=white)
+![Google Sheets API](https://img.shields.io/badge/Google_Sheets_API-34A853?logo=googlesheets&logoColor=white)
+![Vercel](https://img.shields.io/badge/Vercel-000000?logo=vercel&logoColor=white)
 
 ---
 
-## セットアップ手順
+## 解決したい課題
 
-> 画面の名前やボタンの位置は 2026年8月時点のものです。サービス側の更新で変わっている場合があります。
+介護施設でシフトを作るときは、次の条件を**すべて同時に**満たす必要があります。管理者はこの作業に毎月多くの時間を取られています。
 
-### 1. Supabase の準備
+- 社員ごとの**月間休日数**
+- パートの**固定の出勤曜日**
+- **夜勤明け**の休み
+- 一人ひとりの**希望休**
+- 早番・夜勤などの**必要人数**
 
-1. https://supabase.com にログインし、「New project」でプロジェクトを作成（Region は Tokyo 推奨）
-2. 左メニュー「SQL Editor」→ `supabase/schema.sql` の中身を全部貼り付けて「Run」
-3. 左メニュー「Authentication」→「Sign In / Providers」で
-   - **「Allow new users to sign up」をオフ**（勝手に登録されないように。従業員は管理者の招待で登録します）
-4. 「Authentication」→「URL Configuration」で
-   - Site URL: `http://localhost:3000`（公開後は Vercel の URL に変更）
-   - Redirect URLs に `http://localhost:3000/**` と、公開後は `https://あなたのアプリ.vercel.app/**` を追加
-5. （推奨）「Authentication」→「Emails」→「Invite user」テンプレートのリンク部分を次に変更
-   ```html
-   <a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=invite">パスワードを設定する</a>
-   ```
-   ※ 変更しなくても動くように作っていますが、こちらの方が確実です。
-6. ⚠️ **メール送信について**: Supabase 標準のメール送信は、送信数が非常に少なく、送信先もプロジェクトのメンバーに限られる場合があります。
-   実際に従業員へ招待メールを送るには「Authentication」→「Emails」→「SMTP Settings」で外部のメール送信サービス（例: Resend の無料枠）を設定してください。
+さらに、希望休は口頭や紙で集めることが多いため、誰がまだ提出していないのかが分かりにくいという問題もあります。
 
-### 2. 最初の管理者を作る
+このアプリでは、**希望休の回収 → シフトの自動作成 → 人員不足の確認と手直し → 保存**までを、ひとつのアプリで行えるようにしました。
 
-1. 「Authentication」→「Users」→「Add user」→「Create new user」
-   - 管理者のメールアドレスとパスワードを入力し、「Auto Confirm User」にチェックして作成
-2. 「SQL Editor」で `supabase/create-admin.sql` を開き、`admin@example.com` を上のメールアドレスに書き換えて「Run」
+## 主な機能
 
-### 3. Google スプレッドシートの準備
+### 従業員（スマホ対応）
+| 機能 | 内容 |
+|---|---|
+| 希望休カレンダー | タップで休みたい日を選ぶ／解除する。提出したあとも更新できる |
+| メッセージ | 「通院のため」など、管理者への補足を一緒に送れる |
+| 招待制のログイン | 管理者が登録すると招待メールが届き、本人がパスワードを設定する |
 
-「サービスアカウント」＝アプリ専用の Google ロボットアカウントを作り、スプレッドシートを編集できるようにします。
+### 管理者
+| 機能 | 内容 |
+|---|---|
+| 提出状況 | スタッフ数・提出人数を表示し、**未提出者を黄色で強調**。希望休とメッセージを一覧で確認できる |
+| シフト自動生成 | 従業員の条件・勤務区分・希望休から、1か月分のシフトをボタンひとつで作る |
+| 人員不足の警告 | 必要人数に足りない日と勤務区分を**赤く表示** |
+| 手動修正 | セルをタップして勤務区分や休みに変更できる。不足の表示もすぐに再計算される |
+| スプレッドシート保存 | 「完成」を押すと、勤務区分の色付きで Google スプレッドシートに書き出す |
+| 従業員設定 | 社員なら月間休日数、パートなら固定の出勤曜日と勤務区分を設定する |
+| 勤務区分設定 | 早番・夜勤などの名前・色・時間・必要人数・**日またぎ**（翌日を自動で休みにする）を設定する |
 
-1. https://console.cloud.google.com で新しいプロジェクトを作成
-2. 「API とサービス」→「ライブラリ」→「Google Sheets API」を検索して「有効にする」
-3. 「API とサービス」→「認証情報」→「認証情報を作成」→「サービスアカウント」→ 名前を入れて作成
-4. 作成したサービスアカウントを開き、「鍵」タブ →「鍵を追加」→「新しい鍵を作成」→「JSON」→ ファイルがダウンロードされます
-   - ⚠️ この JSON は秘密情報です。GitHub に上げたり、人に送ったりしないでください
-5. 保存先にする Google スプレッドシートを新しく作り、右上「共有」からサービスアカウントのメールアドレス（`〜@〜.iam.gserviceaccount.com`）を **編集者** で追加
+## 画面の流れ
 
-### 4. 環境変数の設定とローカル起動
-
-プロジェクトのフォルダ（`shift-app-2`）で実行します。
-
-```bash
-cp .env.example .env.local
+```mermaid
+flowchart LR
+  subgraph 従業員
+    EL[ログイン] --> CAL[希望休カレンダー] --> SUB[提出]
+  end
+  subgraph 管理者
+    AL[ログイン] --> HOME[管理者ホーム]
+    HOME --> GEN[自動作成<br/>提出状況の確認] --> TABLE[シフト表<br/>不足表示・手動修正]
+    HOME --> TABLE
+    HOME --> EMP[従業員設定]
+    HOME --> TYPE[勤務区分設定]
+    TABLE -->|完成| SHEET[(Google<br/>スプレッドシート)]
+  end
+  SUB -. 希望休 .-> GEN
 ```
 
-`.env.local` をエディタで開き、各値を書き換えます。
+## システム構成
 
-| 変数名 | どこで確認するか |
+```mermaid
+flowchart LR
+  B[ブラウザ<br/>PC・スマホ] --> N[Next.js 16<br/>Vercel]
+  N -->|ログイン・データ操作<br/>RLSで権限を制御| S[(Supabase<br/>Auth + PostgreSQL)]
+  N -->|サービスアカウント| G[Google Sheets API]
+  S -->|招待メール| B
+```
+
+| 技術 | 使った理由 |
 |---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase「Project Settings」→「Data API」の Project URL |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase「Project Settings」→「API Keys」の Publishable key |
-| `SUPABASE_SECRET_KEY` | 同じ画面の Secret key（**絶対に公開しない**） |
-| `NEXT_PUBLIC_SITE_URL` | ローカルは `http://localhost:3000` |
-| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | JSON の `client_email` |
-| `GOOGLE_PRIVATE_KEY` | JSON の `private_key`（`"` で囲んだまま 1 行で） |
-| `GOOGLE_SPREADSHEET_ID` | スプレッドシート URL の `/d/` と `/edit` の間 |
+| **Next.js 16（App Router）** | 画面とサーバー処理（Server Actions）をひとつのプロジェクトで書け、秘密の鍵をブラウザに渡さずに済むため |
+| **Supabase** | ログイン（招待メール含む）と PostgreSQL がまとめて使え、**RLS** でデータベース側から権限を制御できるため |
+| **Google Sheets API** | 施設ではもともとスプレッドシートで印刷・共有していることが多く、運用を変えずに済むため |
+| **Tailwind CSS** | スマホと PC の両方に対応した画面を手早く作れるため |
+
+## 工夫した点
+
+### 1. シフト自動生成アルゴリズム（[`src/lib/generate.ts`](src/lib/generate.ts)）
+
+条件を満たしながら、**月末に人が足りなくならず、勤務区分の偏りも出ない**ように、処理を段階に分けました。
+
+```mermaid
+flowchart TD
+  A[希望休を休みに固定] --> B[パートを固定曜日・固定区分で配置]
+  B --> C["社員：各日の必要人数を埋める（第1段階）"]
+  C --> D["社員：残りの出勤日を手薄な日へ割り振る（第2段階）"]
+  D --> E[埋まらない枠は空欄 → 画面で赤表示]
+```
+
+- **日をまたぐ勤務**（夜勤など）に入れたら、翌日を自動で休みにします。前月末が夜勤だった場合も、当月1日を休みにします
+- 夜勤に入れる前に、「翌日が休みになっても、月間休日数を超えないか」を確認します
+- 候補者は次の優先順位で選びます
+  1. 休日を使い切っていて、残りの日はすべて出勤が必要な人
+  2. その勤務区分に入った回数が少ない人（区分の偏りを防ぐ）
+  3. 残りの出勤日数 ÷ 予定が空いている日数 が大きい人
+- **改善の経緯**：最初の実装は、1日目から順番に「出勤するか休むか」を決めていました。この方法では月末に出勤日数を使い切る人が続出し、人員不足が起きていました。テスト用のデータで不足の発生箇所を調べ、「まず月全体で必要人数を埋め、余った出勤日はあとで割り振る」2段階の方式に作り直したところ、**不足が0**になりました
+- **処理速度**：手元の検証では、スタッフ50名・1か月分を約0.1秒以内で生成できました（要件は10秒以内）
+
+### 2. セキュリティ
+- **RLS（行レベルセキュリティ）**：データベース側でアクセスを制限しています。従業員は自分の希望休しか読み書きできず、シフト表や他の人の情報は管理者だけが見られます（[`supabase/schema.sql`](supabase/schema.sql)）
+- **強い権限の鍵はサーバーだけで使う**：招待メールの送信やユーザーの削除に使う Supabase のシークレットキーは `server-only` で守り、ブラウザに送られないようにしています
+- **すべてのサーバー処理で権限を確認**：画面を経由しない直接の呼び出しにも備え、各処理の最初に管理者かどうかを確認しています。画面から送られてきたシフトのデータも、登録済みの従業員と勤務区分だけに絞ってから保存します
+- **公開登録を受け付けない**：アカウントは管理者が招待した人だけが作れます
+
+### 3. 現場で使いやすくする工夫
+- 従業員の画面はスマホでの操作を前提にしました。大きなタップ領域と、1画面で完結する作りにしています
+- シフト表では、**希望休を出した日に印**を付けました。管理者が手で直すときに、希望を見落とさないようにするためです
+- セルを変更すると、不足人数と赤い表示が**その場で再計算**されます
+- スプレッドシートへの書き出しでは、勤務区分の色・不足の赤表示・見出し行と名前列の固定まで再現しました
+
+## データベース設計
+
+| テーブル | 内容 |
+|---|---|
+| `profiles` | 管理者・従業員のプロフィール。役割、社員／パート、月間休日数、固定出勤曜日など |
+| `shift_types` | 勤務区分。名前、色、時間、必要人数、日またぎ |
+| `day_off_requests` | 希望休。従業員 × 対象月 で1件。日付の一覧とメッセージ |
+| `shift_schedules` | 月ごとのシフト表（JSON 形式）。下書き／完成の状態とスプレッドシートの URL |
+
+## ディレクトリ構成
+
+```
+src/
+├── app/
+│   ├── login/ , admin/login/     … ログイン画面（従業員／管理者）
+│   ├── employee/                 … 従業員の希望休画面と提出処理
+│   ├── admin/(main)/             … 管理者の各画面（ホーム・自動作成・シフト表・設定）
+│   ├── admin/actions.ts          … 管理者のサーバー処理（Server Actions）
+│   └── auth/                     … 招待メールからのパスワード設定
+├── components/                   … 画面の部品（シフト表・カレンダー・フォームなど）
+├── lib/
+│   ├── generate.ts               … シフト自動生成アルゴリズム
+│   ├── sheets.ts                 … Google スプレッドシートへの書き出し
+│   └── supabase/                 … Supabase クライアント（サーバー／ブラウザ／管理用）
+└── proxy.ts                      … ログイン状態の自動更新（Next.js 16 の proxy）
+supabase/schema.sql               … テーブル定義と RLS
+```
+
+## 動かし方
 
 ```bash
 npm install
+cp .env.example .env.local   # Supabase と Google の値を設定
 npm run dev
 ```
 
-ブラウザで http://localhost:3000/admin/login を開き、管理者でログインします。
+Supabase と Google Cloud の準備を含む詳しい手順は、[docs/setup.md](docs/setup.md) にまとめています。
 
-### 5. 使い方の流れ
+## 今後の改善予定
 
-1. **表示名設定**: 早番・日勤・夜勤などを登録（夜勤は「日をまたぐ」にチェック）
-2. **従業員設定**: 従業員を登録 → 招待メールが届き、本人がパスワードを設定
-3. 従業員が `/login` からログインし、希望休を提出
-4. **自動作成**: 提出状況を確認し「シフトを自動生成する」
-5. **シフト表**: 赤い所（人員不足）をセルをタップして手動修正 →「完成」でスプレッドシートに保存
+- [ ] パスワード再設定の機能
+- [ ] 管理者を画面から追加できるようにする
+- [ ] 希望休の提出締切
+- [ ] 自動生成アルゴリズムの自動テスト（単体テスト）
+- [ ] 資格（介護福祉士など）を考慮した配置
 
-### 6. Vercel で公開
+## 開発について
 
-1. GitHub にプッシュ
-2. https://vercel.com で「Add New…」→「Project」→ リポジトリを選んで Import
-3. 「Environment Variables」に `.env.local` と同じ値を登録（`NEXT_PUBLIC_SITE_URL` は Vercel の URL に）
-4. 「Deploy」
-5. Supabase の Site URL / Redirect URLs を Vercel の URL に更新
+- [要件定義書](requirements.md)の作成から始め、MVP（必要最小限の機能）として全19機能を実装しました
+- 開発には AI コーディングアシスタントの **Claude Code** を活用しました。要件の整理、テストデータでのアルゴリズム検証、外部サービスとの接続確認を、AI と対話しながら進めています
 
----
+## 作者
 
-## 自動生成のルール
-
-1. 提出された希望休の日は休み
-2. 日またぎの表示名（夜勤など）の翌日は休み（前月末の夜勤明けも考慮）
-3. パートは固定出勤曜日に、固定の表示名で配置（それ以外の日は休み）
-4. 社員は月間休日数どおりに休みを割り当て、まず各日の必要人数を埋め、残りの出勤日を人が手薄な日へ均等に配置
-5. 配置しきれない枠は空欄のまま → シフト表で赤表示
-
-## 未決事項
-
-- 希望休の提出締切（現在は締切なし。提出後もいつでも更新できます）
+坪井聖奈 — [GitHub](https://github.com/tyz8gmtwm8-sudo)
