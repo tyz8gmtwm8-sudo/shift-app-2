@@ -11,6 +11,26 @@
 ![Google Sheets API](https://img.shields.io/badge/Google_Sheets_API-34A853?logo=googlesheets&logoColor=white)
 ![Vercel](https://img.shields.io/badge/Vercel-000000?logo=vercel&logoColor=white)
 
+**公開URL**：https://shift-app-2-five.vercel.app
+（ログインが必要です。デモ用のアカウントをご希望の方はご連絡ください）
+
+## スクリーンショット
+
+### シフト表（管理者）
+自動生成したシフト表です。勤務区分ごとに色分けされます。必要人数に足りない日と区分は**赤**、従業員が希望休を出した日は**オレンジの点**で表示されます。
+
+![シフト表の画面](docs/images/shift-table.png)
+
+### 提出状況（管理者）
+スタッフ数と提出人数を表示し、まだ提出していない人を**黄色**で強調します。誰がいつ希望休を出したか、どんなメッセージを添えたかも一覧で確認できます。
+
+![提出状況の画面](docs/images/generate.png)
+
+### 希望休カレンダー（従業員・スマホ）
+休みたい日をタップして選び、メッセージを添えて提出します。
+
+<img src="docs/images/employee-calendar.png" alt="希望休カレンダーの画面" width="360">
+
 ---
 
 ## 解決したい課題
